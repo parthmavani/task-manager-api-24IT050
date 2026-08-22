@@ -1,4 +1,7 @@
+require('dotenv').config();
 const express = require('express');
+const mongoose = require('mongoose');
+
 const requestLogger = require('./middleware/logger');
 const contentTypeValidator = require('./middleware/contentTypeValidator');
 const notFoundHandler = require('./middleware/notFoundHandler');
@@ -7,6 +10,7 @@ const taskRoutes = require('./routes/tasks');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/task-manager';
 
 // 1. Request Logging Middleware (Applied globally at the top)
 app.use(requestLogger);
@@ -33,11 +37,20 @@ app.use(notFoundHandler);
 // 6. Global Error Handling Middleware (MUST BE DEFINED LAST in the pipeline)
 app.use(errorHandler);
 
-// Only start the server if file is run directly (supports test imports)
+// Database Connection & Server Initialization
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-  });
+  mongoose
+    .connect(MONGO_URI)
+    .then(() => {
+      console.log(`Connected to MongoDB at ${MONGO_URI}`);
+      app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+      });
+    })
+    .catch((err) => {
+      console.error('Failed to connect to MongoDB:', err.message);
+      process.exit(1);
+    });
 }
 
 module.exports = app;

@@ -1,8 +1,11 @@
+require('dotenv').config();
 const app = require('./server');
 const http = require('http');
+const mongoose = require('mongoose');
 
 let server;
 const PORT = 5001;
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/task-manager-test';
 
 function makeRequest(path, method = 'GET', body = null, headers = {}) {
   return new Promise((resolve, reject) => {
@@ -45,6 +48,12 @@ function makeRequest(path, method = 'GET', body = null, headers = {}) {
 }
 
 async function runTests() {
+  try {
+    await mongoose.connect(MONGO_URI);
+  } catch (err) {
+    console.error('MongoDB connection error in test suite:', err.message);
+  }
+
   server = app.listen(PORT, async () => {
     console.log(`\n========================================`);
     console.log(` Starting Express Task API Test Suite`);
@@ -63,50 +72,76 @@ async function runTests() {
       }
     };
 
+    let createdId;
+
     try {
       // Test 1: GET /tasks
       const res1 = await makeRequest('/tasks', 'GET');
       assertTest('GET /tasks returns HTTP 200 with task list', res1.status === 200 && Array.isArray(res1.body.data));
 
-      // Test 2: POST /tasks (Valid payload)
-      const res2 = await makeRequest('/tasks', 'POST', { title: 'New Test Task', description: 'Testing POST endpoint' });
-      assertTest('POST /tasks creates task and returns HTTP 201', res2.status === 201 && res2.body.data.id !== undefined);
+      // Test 2: POST /tasks (Valid payload with priority)
+      const res2 = await makeRequest('/tasks', 'POST', {
+        title: '   New Test Task   ',
+        description: 'Testing POST endpoint',
+        priority: 'high'
+      });
+      assertTest(
+        'POST /tasks creates task, trims title, sets priority and returns HTTP 201',
+        res2.status === 201 && res2.body.data._id !== undefined && res2.body.data.title === 'New Test Task' && res2.body.data.priority === 'high'
+      );
+      if (res2.body.data && res2.body.data._id) {
+        createdId = res2.body.data._id;
+      }
 
       // Test 3: POST /tasks without Content-Type header
       const res3 = await makeRequest('/tasks', 'POST', JSON.stringify({ title: 'No Header' }), { 'Content-Type': 'text/plain' });
       assertTest('POST /tasks without application/json returns HTTP 400 Bad Request', res3.status === 400 && res3.body.error === 'Bad Request');
 
-      // Test 4: GET /tasks/:id (Valid numeric ID)
-      const res4 = await makeRequest('/tasks/1', 'GET');
-      assertTest('GET /tasks/1 returns HTTP 200 with correct task', res4.status === 200 && res4.body.data.id === 1);
+      // Test 4: POST /tasks validation error (Invalid enum priority)
+      const res4 = await makeRequest('/tasks', 'POST', { title: 'Invalid Enum Task', priority: 'urgent' });
+      assertTest('POST /tasks with invalid enum priority returns HTTP 400 Validation Error', res4.status === 400 && res4.body.error === 'Validation Error');
 
-      // Test 5: GET /tasks/:id (Invalid non-numeric ID validator test)
-      const res5 = await makeRequest('/tasks/abc', 'GET');
-      assertTest('GET /tasks/abc triggers task ID validator returning HTTP 400', res5.status === 400 && res5.body.error === 'Invalid Task ID');
+      // Test 5: GET /tasks/:id (Valid ID)
+      if (createdId) {
+        const res5 = await makeRequest(`/tasks/${createdId}`, 'GET');
+        assertTest('GET /tasks/:id returns HTTP 200 with task object', res5.status === 200 && res5.body.data._id === createdId);
+      }
 
-      // Test 6: GET /tasks/:id (Non-existent task ID)
-      const res6 = await makeRequest('/tasks/9999', 'GET');
-      assertTest('GET /tasks/9999 returns HTTP 404 Task Not Found', res6.status === 404 && res6.body.error === 'Task Not Found');
+      // Test 6: GET /tasks/:id (Invalid non-ObjectId format)
+      const res6 = await makeRequest('/tasks/123invalid', 'GET');
+      assertTest('GET /tasks/123invalid triggers task ID validator returning HTTP 400', res6.status === 400 && res6.body.error === 'Invalid Task ID');
 
-      // Test 7: PUT /tasks/:id (Update task)
-      const res7 = await makeRequest('/tasks/1', 'PUT', { status: 'completed' });
-      assertTest('PUT /tasks/1 updates task status and returns HTTP 200', res7.status === 200 && res7.body.data.status === 'completed');
+      // Test 7: GET /tasks/:id (Non-existent ObjectId)
+      const nonExistentId = '507f1f77bcf86cd799439011';
+      const res7 = await makeRequest(`/tasks/${nonExistentId}`, 'GET');
+      assertTest('GET /tasks/:id with non-existent ObjectId returns HTTP 404 Task Not Found', res7.status === 404 && res7.body.error === 'Task Not Found');
 
-      // Test 8: DELETE /tasks/:id
-      const res8 = await makeRequest('/tasks/2', 'DELETE');
-      assertTest('DELETE /tasks/2 deletes task and returns HTTP 200', res8.status === 200 && res8.body.data.id === 2);
+      // Test 8: PUT /tasks/:id (Update task)
+      if (createdId) {
+        const res8 = await makeRequest(`/tasks/${createdId}`, 'PUT', { completed: true, priority: 'medium' });
+        assertTest('PUT /tasks/:id updates task status and returns HTTP 200', res8.status === 200 && res8.body.data.completed === true);
+      }
 
-      // Test 9: Undefined route 404 Handler
-      const res9 = await makeRequest('/non-existent-endpoint', 'GET');
-      assertTest('GET /non-existent-endpoint triggers 404 Handler with JSON error', res9.status === 404 && res9.body.error === 'Route Not Found');
+      // Test 9: DELETE /tasks/:id
+      if (createdId) {
+        const res9 = await makeRequest(`/tasks/${createdId}`, 'DELETE');
+        assertTest('DELETE /tasks/:id deletes document and returns HTTP 200', res9.status === 200 && res9.body.data._id === createdId);
+      }
 
-      // Test 10: Global Error Handler trigger
-      const res10 = await makeRequest('/trigger-error', 'GET');
-      assertTest('GET /trigger-error triggers Global Error Handler returning HTTP 500 JSON', res10.status === 500 && res10.body.error === 'Internal Server Error');
+      // Test 10: Undefined route 404 Handler
+      const res10 = await makeRequest('/non-existent-endpoint', 'GET');
+      assertTest('GET /non-existent-endpoint triggers 404 Handler with JSON error', res10.status === 404 && res10.body.error === 'Route Not Found');
+
+      // Test 11: Global Error Handler trigger
+      const res11 = await makeRequest('/trigger-error', 'GET');
+      assertTest('GET /trigger-error triggers Global Error Handler returning HTTP 500 JSON', res11.status === 500 && res11.body.error === 'Internal Server Error');
 
     } catch (err) {
       console.error('Test execution error:', err);
     } finally {
+      if (mongoose.connection.readyState !== 0) {
+        await mongoose.connection.close();
+      }
       server.close(() => {
         console.log(`\n========================================`);
         console.log(` Results: ${passed} Passed, ${failed} Failed`);
