@@ -42,11 +42,10 @@ const taskSchema = new mongoose.Schema(
  * Pre-save middleware hook
  * Automatically trims whitespace from the title field prior to document persistence
  */
-taskSchema.pre('save', function (next) {
+taskSchema.pre('save', function () {
   if (this.title && typeof this.title === 'string') {
     this.title = this.title.trim();
   }
-  next();
 });
 
 module.exports = mongoose.model('Task', taskSchema);
