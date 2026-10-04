@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
+const cors = require('cors');
 
 const requestLogger = require('./middleware/logger');
 const contentTypeValidator = require('./middleware/contentTypeValidator');
@@ -13,6 +14,7 @@ const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/task-manager';
 
 // 1. Request Logging Middleware (Applied globally at the top)
+app.use(cors());
 app.use(requestLogger);
 
 // 2. Built-in JSON Body Parsing Middleware
