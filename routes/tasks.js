@@ -2,6 +2,11 @@ const express = require('express');
 const router = express.Router();
 const Task = require('../models/Task');
 const taskIdValidator = require('../middleware/taskIdValidator');
+const authMiddleware = require('../middleware/authMiddleware');
+const validateTask = require('../middleware/validateTask');
+
+// Apply auth middleware to all routes below
+router.use(authMiddleware);
 
 /**
  * @route   GET /tasks
@@ -49,7 +54,7 @@ router.get('/:id', taskIdValidator, async (req, res, next) => {
  * @desc    Create a new task in MongoDB
  * @access  Public
  */
-router.post('/', async (req, res, next) => {
+router.post('/', validateTask, async (req, res, next) => {
   try {
     const { title, description, completed, priority } = req.body;
 
@@ -75,7 +80,7 @@ router.post('/', async (req, res, next) => {
  * @desc    Update an existing task in MongoDB by ID
  * @access  Public
  */
-router.put('/:id', taskIdValidator, async (req, res, next) => {
+router.put('/:id', taskIdValidator, validateTask, async (req, res, next) => {
   try {
     const { title, description, completed, priority } = req.body;
 

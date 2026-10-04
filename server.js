@@ -8,6 +8,8 @@ const contentTypeValidator = require('./middleware/contentTypeValidator');
 const notFoundHandler = require('./middleware/notFoundHandler');
 const errorHandler = require('./middleware/errorHandler');
 const taskRoutes = require('./routes/tasks');
+const authRoutes = require('./routes/auth');
+
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -24,7 +26,9 @@ app.use(express.json());
 app.use(contentTypeValidator);
 
 // 4. API Routes
+app.use('/auth', authRoutes);
 app.use('/tasks', taskRoutes);
+
 
 // Route to demonstrate error handler catching a deliberately thrown error
 app.get('/trigger-error', (req, res, next) => {
