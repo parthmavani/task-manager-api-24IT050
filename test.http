@@ -1,0 +1,49 @@
+### Practical 9: In-Memory Caching & Query Optimization Tests
+@baseUrl = http://localhost:5000
+@authToken = {{login.response.body.token}}
+
+### 1. Register User (if not registered yet)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "student@example.com",
+  "password": "password123"
+}
+
+### 2. Login to acquire JWT Token
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "student@example.com",
+  "password": "password123"
+}
+
+### 3. Create Sample Task (Write Operation -> Invalidation)
+POST {{baseUrl}}/tasks
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "title": "Task with Caching",
+  "description": "Demonstrating cache invalidation",
+  "priority": "high"
+}
+
+### 4. GET /tasks - Request 1 (Cache MISS: Fetches from MongoDB)
+GET {{baseUrl}}/tasks
+Authorization: Bearer {{authToken}}
+
+### 5. GET /tasks - Request 2 (Cache HIT: Served from Memory)
+GET {{baseUrl}}/tasks
+Authorization: Bearer {{authToken}}
+
+### 6. GET /tasks - Request 3 (Cache HIT: Served from Memory)
+GET {{baseUrl}}/tasks
+Authorization: Bearer {{authToken}}
+
+### 7. GET /tasks/cache-stats (Inspect Hit/Miss Statistics)
+GET {{baseUrl}}/tasks/cache-stats
+Authorization: Bearer {{authToken}}

@@ -156,4 +156,53 @@ npm start
 ```bash
 npm test
 ```
-Runs 11 test cases validating Mongoose CRUD operations, enum enforcement, ObjectId validation, 404 responses, and global error handling.
+Runs test cases validating Mongoose CRUD operations, enum enforcement, ObjectId validation, 404 responses, and global error handling.
+
+---
+
+## Practical 9: In-Memory Caching & Query Optimization
+
+### 1. Architecture: Cache-Aside Pattern
+```
+GET /tasks
+   │
+   ▼
+[Cache Check (node-cache)]
+   ├── HIT  ──► Return cached tasks immediately from RAM (X-Cache: HIT)
+   └── MISS ──► Query MongoDB ──► Store in node-cache (TTL 60s) ──► Return tasks (X-Cache: MISS)
+
+POST / PUT / DELETE /tasks
+   │
+   ▼
+Write to MongoDB ──► Invalidate cache keys (`all_tasks`, `task_:id`) ──► Return response
+```
+
+### 2. Implementation Summary
+- **Module**: [utils/cache.js](file:///e:/task-manager-api-24IT050/utils/cache.js) manages a shared singleton `NodeCache` instance (`stdTTL: 60`, `checkperiod: 120`).
+- **Read Caching**: `GET /tasks` checks the `'all_tasks'` cache key before querying MongoDB. `GET /tasks/:id` checks `'task_:id'`.
+- **Cache Invalidation**: Every write operation (`POST /tasks`, `PUT /tasks/:id`, `DELETE /tasks/:id`) evicts affected cache entries to ensure stale data is never served.
+- **Debug Route**: `GET /tasks/cache-stats` exposes cache hits, misses, key count, and memory footprint.
+
+### 3. Empirical Response Time Comparison (Lab Journal Data)
+Benchmark measured with real network round-trips over Node HTTP client against local MongoDB:
+
+| Metric / Scenario | Uncached (MongoDB Query) | Cached (node-cache RAM) | Latency Reduction |
+| :--- | :--- | :--- | :--- |
+| **Sample 1** | 13.4 ms | 4.6 ms | **65.7% faster** |
+| **Sample 2** | 8.1 ms | 4.5 ms | **44.4% faster** |
+| **Average** | **10.7 ms** | **4.5 ms** | **~58% faster** |
+
+*To run the benchmark suite:*
+```bash
+npm run benchmark
+```
+
+### 4. Key Questions & Viva Analysis
+1. **Why must the cache be invalidated on every write operation, and what happens if it is not?**
+   - Invalidation is essential for cache coherence. If omitted, the server continues returning old cached responses until the TTL expires, presenting a dirty/stale view of data where newly added, edited, or deleted tasks are missing or improperly represented.
+2. **What is a reasonable TTL (time-to-live) and what trade-off does it represent?**
+   - For a task management API, a TTL of 60 seconds is typical. 
+   - **Trade-off:** A longer TTL improves server throughput and reduces database load, but increases stale-data exposure if invalidation is missed. A shorter TTL ensures data freshness at the cost of more frequent database round-trips.
+3. **Why is process-local in-memory caching (`node-cache`) not suitable for multi-server deployments?**
+   - `node-cache` stores items exclusively in the memory space of a single Node.js process. When horizontal scaling is introduced (e.g., across 3 servers behind an NGINX load balancer), a write handled by Server A invalidates only Server A's local memory. Servers B and C retain stale data. A centralized, shared in-memory datastore such as **Redis** or **Memcached** is required for distributed deployments.
+

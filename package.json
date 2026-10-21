@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node test.js"
+    "test": "node test.js",
+    "benchmark": "node benchmark-cache.js"
   },
   "keywords": [
     "express",
@@ -22,6 +23,7 @@
     "dotenv": "^17.4.2",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.3",
-    "mongoose": "^9.9.3"
+    "mongoose": "^9.9.3",
+    "node-cache": "^5.1.2"
   }
 }

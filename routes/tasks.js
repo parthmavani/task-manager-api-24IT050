@@ -4,22 +4,67 @@ const Task = require('../models/Task');
 const taskIdValidator = require('../middleware/taskIdValidator');
 const authMiddleware = require('../middleware/authMiddleware');
 const validateTask = require('../middleware/validateTask');
+const cache = require('../utils/cache');
 
 // Apply auth middleware to all routes below
 router.use(authMiddleware);
 
 /**
+ * @route   GET /tasks/cache-stats (and /tasks/debug/cache-stats)
+ * @desc    Retrieve in-memory cache statistics (hits, misses, keys, memory usage)
+ * @access  Private
+ */
+router.get(['/cache-stats', '/debug/cache-stats'], (req, res) => {
+  const stats = cache.getStats();
+  const keys = cache.keys();
+  res.status(200).json({
+    success: true,
+    message: 'Cache statistics retrieved successfully',
+    stats: {
+      hits: stats.hits,
+      misses: stats.misses,
+      keysCount: stats.keys,
+      ksize: stats.ksize,
+      vsize: stats.vsize
+    },
+    activeKeys: keys
+  });
+});
+
+/**
  * @route   GET /tasks
- * @desc    Retrieve all tasks from MongoDB
- * @access  Public
+ * @desc    Retrieve all tasks from MongoDB (with In-Memory Caching)
+ * @access  Private
  */
 router.get('/', async (req, res, next) => {
   try {
+    const cacheKey = 'all_tasks';
+
+    // 1. Check if tasks exist in cache
+    const cachedResponse = cache.get(cacheKey);
+    if (cachedResponse) {
+      res.set('X-Cache', 'HIT');
+      return res.status(200).json({
+        ...cachedResponse,
+        cached: true
+      });
+    }
+
+    // 2. Cache MISS: Query MongoDB
     const tasks = await Task.find().sort({ createdAt: -1 });
-    res.status(200).json({
+    const responsePayload = {
       success: true,
       count: tasks.length,
       data: tasks
+    };
+
+    // 3. Store in cache (stdTTL: 60s)
+    cache.set(cacheKey, responsePayload);
+
+    res.set('X-Cache', 'MISS');
+    res.status(200).json({
+      ...responsePayload,
+      cached: false
     });
   } catch (err) {
     next(err);
@@ -28,11 +73,24 @@ router.get('/', async (req, res, next) => {
 
 /**
  * @route   GET /tasks/:id
- * @desc    Retrieve a single task by MongoDB ObjectId
- * @access  Public
+ * @desc    Retrieve a single task by MongoDB ObjectId (with In-Memory Caching)
+ * @access  Private
  */
 router.get('/:id', taskIdValidator, async (req, res, next) => {
   try {
+    const cacheKey = `task_${req.taskId}`;
+
+    // 1. Check single-task cache
+    const cachedTask = cache.get(cacheKey);
+    if (cachedTask) {
+      res.set('X-Cache', 'HIT');
+      return res.status(200).json({
+        ...cachedTask,
+        cached: true
+      });
+    }
+
+    // 2. Cache MISS: Query MongoDB
     const task = await Task.findById(req.taskId);
     if (!task) {
       return res.status(404).json({
@@ -40,9 +98,19 @@ router.get('/:id', taskIdValidator, async (req, res, next) => {
         message: `No task found with ID ${req.taskId}`
       });
     }
-    res.status(200).json({
+
+    const responsePayload = {
       success: true,
       data: task
+    };
+
+    // 3. Store single task in cache
+    cache.set(cacheKey, responsePayload);
+
+    res.set('X-Cache', 'MISS');
+    res.status(200).json({
+      ...responsePayload,
+      cached: false
     });
   } catch (err) {
     next(err);
@@ -51,8 +119,8 @@ router.get('/:id', taskIdValidator, async (req, res, next) => {
 
 /**
  * @route   POST /tasks
- * @desc    Create a new task in MongoDB
- * @access  Public
+ * @desc    Create a new task in MongoDB & invalidate cache
+ * @access  Private
  */
 router.post('/', validateTask, async (req, res, next) => {
   try {
@@ -64,6 +132,9 @@ router.post('/', validateTask, async (req, res, next) => {
       completed,
       priority
     });
+
+    // Invalidate all tasks cache so newly created task is included on next fetch
+    cache.del('all_tasks');
 
     res.status(201).json({
       success: true,
@@ -77,8 +148,8 @@ router.post('/', validateTask, async (req, res, next) => {
 
 /**
  * @route   PUT /tasks/:id
- * @desc    Update an existing task in MongoDB by ID
- * @access  Public
+ * @desc    Update an existing task in MongoDB by ID & invalidate cache
+ * @access  Private
  */
 router.put('/:id', taskIdValidator, validateTask, async (req, res, next) => {
   try {
@@ -97,6 +168,10 @@ router.put('/:id', taskIdValidator, validateTask, async (req, res, next) => {
       });
     }
 
+    // Invalidate both all-tasks cache and this specific task's cache
+    cache.del('all_tasks');
+    cache.del(`task_${req.taskId}`);
+
     res.status(200).json({
       success: true,
       message: 'Task updated successfully',
@@ -109,8 +184,8 @@ router.put('/:id', taskIdValidator, validateTask, async (req, res, next) => {
 
 /**
  * @route   DELETE /tasks/:id
- * @desc    Delete a task from MongoDB by ID
- * @access  Public
+ * @desc    Delete a task from MongoDB by ID & invalidate cache
+ * @access  Private
  */
 router.delete('/:id', taskIdValidator, async (req, res, next) => {
   try {
@@ -123,6 +198,10 @@ router.delete('/:id', taskIdValidator, async (req, res, next) => {
       });
     }
 
+    // Invalidate both all-tasks cache and this specific task's cache
+    cache.del('all_tasks');
+    cache.del(`task_${req.taskId}`);
+
     res.status(200).json({
       success: true,
       message: 'Task deleted successfully',
@@ -134,3 +213,4 @@ router.delete('/:id', taskIdValidator, async (req, res, next) => {
 });
 
 module.exports = router;
+
