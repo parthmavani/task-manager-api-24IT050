@@ -1,0 +1,9 @@
+node_modules
+npm-debug.log
+.env
+.git
+.gitignore
+frontend
+dist
+verify-backend-live.js
+demonstrate-events.js

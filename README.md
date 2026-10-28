@@ -278,4 +278,89 @@ Running `npm run demo:events` provides verifiable proof that the HTTP response a
      - **No Retries or Dead-Letter Queues:** It lacks built-in retry mechanisms, rate limiting, and delivery guarantees.
      - *Production Solution:* Dedicated distributed message brokers or background queues such as **BullMQ (Redis)**, **RabbitMQ**, **Apache Kafka**, or **AWS SQS**.
 
+---
+
+## Practical 11: Containerization with Docker & Docker Compose
+
+### Overview & Objective
+- **CO/PO**: CO5 / PO3, PO5
+- **Objective**: Containerize the full-stack application using Docker and orchestrate all services (React frontend, Node/Express backend, and MongoDB database) using Docker Compose.
+- **Core Principle**: Standardize deployment across environments, eliminate "works on my machine" issues, enable automatic service discovery over an isolated Docker bridge network, and ensure state persistence using named volumes.
+
+### Architecture & Multi-Container Networking Diagram
+
+```mermaid
+graph TD
+    subgraph Host["Host Machine (Windows / Linux / macOS)"]
+        Browser["Host Browser / Postman"]
+    end
+
+    subgraph Compose["Docker Compose (task-manager-network - Bridge)"]
+        Frontend["task-manager-frontend<br/>React + Vite Production<br/>(Port 5173:5173)"]
+        Backend["task-manager-backend<br/>Express REST API<br/>(Port 5000:5000)"]
+        MongoDB["task-manager-mongodb<br/>MongoDB Database<br/>(Port 27018:27017)"]
+        Volume[("Named Volume<br/>task-manager-mongo-data<br/>(/data/db)")]
+    end
+
+    Browser -->|"http://localhost:5173"| Frontend
+    Browser -->|"http://localhost:5000"| Backend
+    Frontend -->|"API Requests (CORS)"| Backend
+    Backend -->|"mongodb://mongodb:27017/task-manager<br/>(Internal DNS Discovery)"| MongoDB
+    MongoDB --- Volume
+```
+
+### Files Added in Practical 11
+1. **[Dockerfile](file:///e:/task-manager-api-24IT050/Dockerfile)** (Backend):
+   - Based on lightweight `node:18-alpine`.
+   - Employs layer caching by copying `package*.json` prior to `RUN npm install`.
+   - Exposes port `5000` and starts server via `CMD ["node", "server.js"]`.
+2. **[frontend/Dockerfile](file:///e:/task-manager-api-24IT050/frontend/Dockerfile)** (Frontend Multi-Stage Build):
+   - **Stage 1 (`build`)**: Installs dependencies and compiles production assets with `npm run build`.
+   - **Stage 2 (`runner`)**: Uses a fresh `node:18-alpine` runtime, copies only `dist` and `package.json`, and serves with `npm run preview -- --host 0.0.0.0 --port 5173` to reduce attack surface and final image footprint.
+3. **[.dockerignore](file:///e:/task-manager-api-24IT050/.dockerignore)** & **[frontend/.dockerignore](file:///e:/task-manager-api-24IT050/frontend/.dockerignore)**:
+   - Excludes `node_modules`, `.env`, and git history from the build context to accelerate builds and avoid OS binary mismatch.
+4. **[docker-compose.yml](file:///e:/task-manager-api-24IT050/docker-compose.yml)**:
+   - Defines `mongodb`, `backend`, and `frontend` services with port bindings and service dependencies (`depends_on`).
+   - Declares named volume `mongo-data` mapped to `/data/db` for database persistence.
+   - Declares bridge network `app-network` for secure inter-container DNS communication.
+
+### Quick Start: Running the Entire Stack
+
+Run all 3 containers with a single command:
+```bash
+# Build images and start all services in detached mode
+docker compose up --build -d
+
+# Verify all containers are running
+docker compose ps
+```
+
+To stop all services:
+```bash
+docker compose down
+```
+
+### Service Access URLs
+* **Frontend Dashboard**: [http://localhost:5173](http://localhost:5173)
+* **Backend REST API**: [http://localhost:5000](http://localhost:5000)
+* **API Status & Health**: [http://localhost:5000/](http://localhost:5000/)
+
+### Key Viva Questions & Analysis
+
+1. **Why does the backend container need to reference the MongoDB container by its service name (`mongodb`) rather than `localhost`?**
+   - In a containerized environment, each container has its own isolated network stack and private localhost loopback (`127.0.0.1`). If the backend container attempts to connect to `localhost:27017`, it is looking for MongoDB running *inside the backend container itself*, which will fail with `ECONNREFUSED`. Docker Compose creates a private user-defined bridge network with built-in DNS service discovery, allowing containers to resolve and communicate with other containers using their Compose service names (e.g., `mongodb://mongodb:27017/task-manager`).
+
+2. **What is the difference between `EXPOSE` in a Dockerfile and the `ports` mapping in `docker-compose.yml`?**
+   - **`EXPOSE` (Dockerfile)**: Serves strictly as image metadata/documentation informing users which ports the containerized process listens on internally. It does **not** publish or open ports to the host machine's network interfaces.
+   - **`ports` (docker-compose.yml)**: Performs actual network port forwarding between the host and container (`HOST:CONTAINER`, e.g., `5000:5000`). It binds the container's internal port to the host computer's port, making the service accessible from outside Docker (such as via a host web browser or Postman).
+
+3. **Why is it considered bad practice to copy `node_modules` into a Docker image instead of running `npm install` inside the container?**
+   - **OS & Architecture Incompatibility:** Host machines frequently run Windows or macOS, whereas containers run Linux (e.g., Alpine/Debian). Many npm packages compile platform-specific C/C++ native binaries (e.g., `bcrypt`, `node-gyp`). Copying host `node_modules` leads to `ELF` binary mismatch runtime failures.
+   - **Build Context Bloat:** `node_modules` typically contains tens of thousands of files and hundreds of megabytes. Copying it drastically slows down the Docker daemon build context transfer.
+   - **Proper Pattern:** Use `.dockerignore` to exclude `node_modules`, copy only `package.json` and `package-lock.json`, and run `RUN npm install` inside the Linux container.
+
+4. **Why are named volumes necessary for MongoDB in Docker?**
+   - Docker containers are fundamentally ephemeral: when a container is removed or updated (`docker compose down`), any files written to its internal writable layer are destroyed. Mapping a named volume (`mongo-data:/data/db`) stores MongoDB's actual database files directly on the host Docker storage engine, ensuring task data persists across container restarts, image rebuilds, and code updates.
+
+
 
