@@ -47,3 +47,24 @@ Authorization: Bearer {{authToken}}
 ### 7. GET /tasks/cache-stats (Inspect Hit/Miss Statistics)
 GET {{baseUrl}}/tasks/cache-stats
 Authorization: Bearer {{authToken}}
+
+### =============================================================
+### Practical 10: Event-Driven Background Processing Tests
+### =============================================================
+
+### 8. Create Task (Triggers 'task-created' event & background notification)
+# @name createTask
+POST {{baseUrl}}/tasks
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "title": "Practical 10 Async Event Task",
+  "description": "Observing response before background notification completes",
+  "priority": "high"
+}
+
+### 9. Delete Task (Triggers 'task-deleted' event & background audit log)
+DELETE {{baseUrl}}/tasks/{{createTask.response.body.data._id}}
+Authorization: Bearer {{authToken}}
+

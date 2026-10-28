@@ -2,10 +2,13 @@ require('dotenv').config();
 const app = require('./server');
 const http = require('http');
 const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
 
 let server;
 const PORT = 5001;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/task-manager-test';
+const JWT_SECRET = process.env.JWT_SECRET || 'secret123';
+const authToken = jwt.sign({ id: 'test_user_id' }, JWT_SECRET, { expiresIn: '1h' });
 
 function makeRequest(path, method = 'GET', body = null, headers = {}) {
   return new Promise((resolve, reject) => {
@@ -14,7 +17,10 @@ function makeRequest(path, method = 'GET', body = null, headers = {}) {
       port: PORT,
       path: path,
       method: method,
-      headers: { ...headers }
+      headers: {
+        'Authorization': `Bearer ${authToken}`,
+        ...headers
+      }
     };
 
     let postData = '';
@@ -118,7 +124,7 @@ async function runTests() {
 
       // Test 8: PUT /tasks/:id (Update task)
       if (createdId) {
-        const res8 = await makeRequest(`/tasks/${createdId}`, 'PUT', { completed: true, priority: 'medium' });
+        const res8 = await makeRequest(`/tasks/${createdId}`, 'PUT', { title: 'Updated Test Task', completed: true, priority: 'medium' });
         assertTest('PUT /tasks/:id updates task status and returns HTTP 200', res8.status === 200 && res8.body.data.completed === true);
       }
 

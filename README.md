@@ -206,3 +206,76 @@ npm run benchmark
 3. **Why is process-local in-memory caching (`node-cache`) not suitable for multi-server deployments?**
    - `node-cache` stores items exclusively in the memory space of a single Node.js process. When horizontal scaling is introduced (e.g., across 3 servers behind an NGINX load balancer), a write handled by Server A invalidates only Server A's local memory. Servers B and C retain stale data. A centralized, shared in-memory datastore such as **Redis** or **Memcached** is required for distributed deployments.
 
+---
+
+## Practical 10: Asynchronous Processing with Event-Driven Architecture (EventEmitter)
+
+### Overview & Objective
+- **CO/PO**: CO4 / PO3, PO5
+- **Objective**: Implement asynchronous background processing using Node.js native `EventEmitter` without external dependencies.
+- **Core Principle**: Decouple non-critical side effects (notifications, audit logging, analytics) from the critical request path to achieve fast, non-blocking HTTP responses.
+
+### Architecture & Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client as Postman / Client
+    participant API as Express Router (POST /tasks)
+    participant DB as MongoDB
+    participant Bus as TaskEvents (EventEmitter)
+    participant Listener as Notification Listener
+
+    Client->>API: POST /tasks (Task JSON payload)
+    API->>DB: Save Task (Task.create)
+    DB-->>API: Task Created
+    API-->>Client: 201 Created (HTTP response returned IMMEDIATELY)
+    API->>Bus: emit('task-created', taskData)
+    Note over Bus,Listener: Asynchronous Background Event Queue
+    Bus->>Listener: Trigger listener callback
+    Listener-->>Listener: Simulate background work (2000ms delay)
+    Listener->>Listener: Log Task Title, Timestamp, Assigned User
+```
+
+### Module Organization
+1. **[events.js](file:///e:/task-manager-api-24IT050/events.js)**:
+   - Subclasses `EventEmitter` and exports a singleton instance (`taskEvents`).
+2. **[listeners.js](file:///e:/task-manager-api-24IT050/listeners.js)**:
+   - Registers event handlers for `'task-created'`, `'task-deleted'`, and `'error'`.
+   - Includes artificial delays (`setTimeout` 2000ms and 1500ms) to clearly simulate realistic background operations (e.g., dispatching emails or audit storage) without blocking API callers.
+   - Includes process protection via an `'error'` listener to prevent unhandled EventEmitter errors from crashing Node.js.
+3. **[routes/tasks.js](file:///e:/task-manager-api-24IT050/routes/tasks.js)**:
+   - Emits `'task-created'` and `'task-deleted'` after flushing HTTP responses to clients.
+4. **[server.js](file:///e:/task-manager-api-24IT050/server.js)**:
+   - Imports `./listeners` at startup to ensure all event subscriptions are active before any requests are handled.
+
+### Empirical Timestamp Evidence (Response-Before-Handler Proof)
+
+Running `npm run demo:events` provides verifiable proof that the HTTP response arrives long before the background listener completes:
+
+| Execution Step | Timestamp | Elapsed Time | Description |
+| :--- | :--- | :--- | :--- |
+| **Client Request** | `2026-10-28T05:27:09.478Z` | `0 ms` | Client dispatches `POST /tasks` |
+| **API Response** | `2026-10-28T05:27:09.544Z` | `66 ms` | Server responds with **HTTP 201 Created** |
+| **Client Receives** | `2026-10-28T05:27:09.551Z` | `71 ms` | Client receives response body and closes connection |
+| **Listener Completion** | `2026-10-28T05:27:11.549Z` | `2071 ms` | Background notification finishes executing |
+
+> **Conclusion**: The client received the response in **71 ms**, while the background notification completed **~2 seconds later**, confirming complete non-blocking execution.
+
+### Key Viva Questions & Analysis
+
+1. **Why does emitting an event not block the API response, even though both run on the same Node.js process?**
+   - Node.js operates on an asynchronous, single-threaded event loop. When the route handler calls `res.status(201).json()`, Express flushes the HTTP response data directly to the operating system's TCP socket buffer. When asynchronous primitives (such as timers, I/O, or asynchronous callbacks inside `.on()`) are utilized within the listener, Node.js registers them with `libuv`'s event loop timer/I/O queues and resumes processing. The caller's HTTP connection is already completed and closed while the background event listener executes during subsequent event loop phases.
+
+2. **What would happen to API response time if the notification logic were placed directly inside the POST route instead of in an event handler?**
+   - The API response time would suffer directly from cumulative latency. If notification dispatch takes 2000 ms (e.g. SMTP handshake or SMS gateway round-trip), every user creating a task would be forced to wait at least **2070+ ms** instead of **70 ms** for their request to finish. Under high concurrency, this locks connection slots, exhausts server sockets, and leads to HTTP 504 Gateway Timeouts.
+
+3. **Why is `EventEmitter` a reasonable choice for this scale of application, but not for a production system handling millions of events per day?**
+   - **Why it fits single-instance apps**: It is native to Node.js, requires no external infrastructure or network overhead, has zero latency, and provides a lightweight pub-sub pattern.
+   - **Why it fails in distributed/enterprise production**:
+     - **Lack of Persistence:** Events reside exclusively in process RAM. If the Node.js server crashes or restarts, all pending in-memory events are permanently lost.
+     - **Single-Process Bound:** `EventEmitter` cannot dispatch events across multiple server processes or horizontally scaled container clusters (Docker/Kubernetes).
+     - **No Retries or Dead-Letter Queues:** It lacks built-in retry mechanisms, rate limiting, and delivery guarantees.
+     - *Production Solution:* Dedicated distributed message brokers or background queues such as **BullMQ (Redis)**, **RabbitMQ**, **Apache Kafka**, or **AWS SQS**.
+
+

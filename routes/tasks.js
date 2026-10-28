@@ -5,6 +5,7 @@ const taskIdValidator = require('../middleware/taskIdValidator');
 const authMiddleware = require('../middleware/authMiddleware');
 const validateTask = require('../middleware/validateTask');
 const cache = require('../utils/cache');
+const taskEvents = require('../events');
 
 // Apply auth middleware to all routes below
 router.use(authMiddleware);
@@ -136,10 +137,17 @@ router.post('/', validateTask, async (req, res, next) => {
     // Invalidate all tasks cache so newly created task is included on next fetch
     cache.del('all_tasks');
 
+    console.log(`[API] Response sent at ${new Date().toISOString()}`);
     res.status(201).json({
       success: true,
       message: 'Task created successfully',
       data: newTask
+    });
+
+    // Emit 'task-created' event asynchronously without blocking the response (Practical 10)
+    taskEvents.emit('task-created', {
+      ...newTask.toObject(),
+      assignedUser: req.user ? (req.user.email || req.user.id || 'User-24IT050') : 'User-24IT050'
     });
   } catch (err) {
     next(err);
@@ -202,10 +210,17 @@ router.delete('/:id', taskIdValidator, async (req, res, next) => {
     cache.del('all_tasks');
     cache.del(`task_${req.taskId}`);
 
+    console.log(`[API] Task deleted response sent at ${new Date().toISOString()}`);
     res.status(200).json({
       success: true,
       message: 'Task deleted successfully',
       data: deletedTask
+    });
+
+    // Emit 'task-deleted' event asynchronously without blocking the response (Practical 10)
+    taskEvents.emit('task-deleted', {
+      ...deletedTask.toObject(),
+      deletedBy: req.user ? (req.user.email || req.user.id || 'User-24IT050') : 'User-24IT050'
     });
   } catch (err) {
     next(err);

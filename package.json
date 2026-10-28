@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "test": "node test.js",
-    "benchmark": "node benchmark-cache.js"
+    "benchmark": "node benchmark-cache.js",
+    "demo:events": "node demonstrate-events.js"
   },
   "keywords": [
     "express",

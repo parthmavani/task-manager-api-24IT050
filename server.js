@@ -10,6 +10,8 @@ const errorHandler = require('./middleware/errorHandler');
 const taskRoutes = require('./routes/tasks');
 const authRoutes = require('./routes/auth');
 
+// Register Event Listeners for Asynchronous Processing (Practical 10)
+require('./listeners');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
