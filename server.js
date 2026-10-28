@@ -27,6 +27,34 @@ app.use(express.json());
 // 3. Custom Content-Type Validator (Rejects POST/PUT without application/json)
 app.use(contentTypeValidator);
 
+// Root API Status & Overview
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Task Manager RESTful API is running successfully',
+    author: 'Parth Mavani (24IT050)',
+    institution: 'CSPIT, CHARUSAT University',
+    version: '1.0.0',
+    status: 'healthy',
+    endpoints: {
+      auth: {
+        register: 'POST /auth/register',
+        login: 'POST /auth/login',
+        profile: 'GET /auth/me'
+      },
+      tasks: {
+        getAllTasks: 'GET /tasks',
+        getTaskById: 'GET /tasks/:id',
+        createTask: 'POST /tasks',
+        updateTask: 'PUT /tasks/:id',
+        deleteTask: 'DELETE /tasks/:id',
+        cacheStats: 'GET /tasks/cache-stats'
+      }
+    },
+    frontend: 'http://localhost:5173'
+  });
+});
+
 // 4. API Routes
 app.use('/auth', authRoutes);
 app.use('/tasks', taskRoutes);

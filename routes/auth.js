@@ -71,7 +71,9 @@ router.post('/login', async (req, res, next) => {
 router.get('/me', authMiddleware, async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id).select('-password');
-    if (!user) throw new Error('User not found');
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'User not found' });
+    }
     res.json({ success: true, user });
   } catch (err) {
     next(err);
