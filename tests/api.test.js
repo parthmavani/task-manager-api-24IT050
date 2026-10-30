@@ -3,10 +3,11 @@ const app = require('../server');
 
 describe('API Health and Middleware Automated Test Suite (Practical 12 - CI/CD)', () => {
 
-  // Test 1: Verify Root endpoint health check
+  // Test 1: Verify Root endpoint health check (DELIBERATELY BROKEN TO TEST CI FAILURE)
   test('GET / returns HTTP 200 and API health status', async () => {
     const res = await request(app).get('/');
-    expect(res.statusCode).toBe(200);
+    // Intentionally expecting 500 instead of 200 to demonstrate Red X / failed pipeline
+    expect(res.statusCode).toBe(500);
     expect(res.body.success).toBe(true);
     expect(res.body.status).toBe('healthy');
     expect(res.body.author).toContain('Parth Mavani (24IT050)');
