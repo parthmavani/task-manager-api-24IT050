@@ -9,6 +9,7 @@ const notFoundHandler = require('./middleware/notFoundHandler');
 const errorHandler = require('./middleware/errorHandler');
 const taskRoutes = require('./routes/tasks');
 const authRoutes = require('./routes/auth');
+const aiRoutes = require('./routes/ai');
 
 // Register Event Listeners for Asynchronous Processing (Practical 10)
 require('./listeners');
@@ -49,6 +50,9 @@ app.get('/', (req, res) => {
         updateTask: 'PUT /tasks/:id',
         deleteTask: 'DELETE /tasks/:id',
         cacheStats: 'GET /tasks/cache-stats'
+      },
+      ai: {
+        generateDescription: 'POST /api/ai/generate-description'
       }
     },
     frontend: 'http://localhost:5173'
@@ -58,6 +62,7 @@ app.get('/', (req, res) => {
 // 4. API Routes
 app.use('/auth', authRoutes);
 app.use('/tasks', taskRoutes);
+app.use('/api/ai', aiRoutes);
 
 
 // Route to demonstrate error handler catching a deliberately thrown error

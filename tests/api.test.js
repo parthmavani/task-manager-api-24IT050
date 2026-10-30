@@ -3,7 +3,7 @@ const app = require('../server');
 
 describe('API Health and Middleware Automated Test Suite (Practical 12 - CI/CD)', () => {
 
-  // Test 1: Verify Root endpoint health check (FIXED: Expected 200)
+  // Test 1: Verify Root endpoint health check
   test('GET / returns HTTP 200 and API health status', async () => {
     const res = await request(app).get('/');
     expect(res.statusCode).toBe(200);
@@ -29,6 +29,30 @@ describe('API Health and Middleware Automated Test Suite (Practical 12 - CI/CD)'
 
     expect(res.statusCode).toBe(400);
     expect(res.body.error).toBe('Bad Request');
+  });
+
+  // Test 4 (Practical 13): Verify AI endpoint input validation
+  test('POST /api/ai/generate-description requires a valid title', async () => {
+    const res = await request(app)
+      .post('/api/ai/generate-description')
+      .send({});
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toContain('title is required');
+  });
+
+  // Test 5 (Practical 13): Verify Graceful Degradation on AI failure/offline fallback
+  test('POST /api/ai/generate-description gracefully returns fallback when offline', async () => {
+    const res = await request(app)
+      .post('/api/ai/generate-description')
+      .send({ title: 'Configure Docker Volume Backups' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(typeof res.body.description).toBe('string');
+    expect(res.body.description.length).toBeGreaterThan(10);
+    expect(['low', 'medium', 'high']).toContain(res.body.suggestedPriority);
   });
 
 });

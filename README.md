@@ -415,3 +415,61 @@ Pass: Green Checkmark (✅) / Fail: Red Cross (❌) + Realtime Build Logs
    - Both scenarios result in a failed pipeline step (`npm test`), but the failure mechanism and error diagnostics differ:
      - **Incorrect test path / missing test file:** Jest reports `No tests found` or `Your test suite must contain at least one test` with exit code 1. The test runner cannot find executable assertions.
      - **Genuine test failure:** Jest successfully locates and executes the test file, but an assertion fails (e.g. `Received: 500, Expected: 200`), displaying expected vs received diffs and stack traces. Both halt the pipeline, but the log output distinguishes harness configuration errors from software defects.
+
+
+---
+
+## Practical 13: AI API Integration into a Web Application (Google Gemini)
+
+### Overview & Objective
+- **CO/PO**: CO6 / PO3, PO5, PO12
+- **Objective**: Integrate Google Gemini AI (`gemini-1.5-flash`) into the Task Management system to auto-generate actionable task descriptions and suggest priority levels based on task titles, with full architectural security and graceful degradation.
+- **Core Principle**: Deliver responsible AI enhancements that augment user productivity while safeguarding sensitive API credentials server-side and ensuring continuous, uninterrupted application operation when third-party AI services experience outages or latency.
+
+### System Architecture & Secure Data Flow
+
+```
+[ React 18 Frontend ]
+         │
+         │ 1. User enters Task Title & clicks "✨ Auto-Generate with AI"
+         ▼ (HTTP POST /api/ai/generate-description)
+[ Express.js Backend ]
+         │
+         │ 2. Reads process.env.GEMINI_API_KEY (Excluded via .gitignore)
+         ▼ (HTTPS POST to Google Generative Language REST API)
+[ Google Gemini Cloud API (gemini-1.5-flash) ]
+         │
+         │ 3. Returns structured JSON { description, suggestedPriority }
+         ▼
+[ Express.js Backend ]
+         │
+         │ 4. Validates payload (or catches failure and dispatches deterministic fallback)
+         ▼
+[ React 18 Frontend ]
+         └─► 5. Populates editable Description and Priority fields with AI Disclaimer badge
+```
+
+### Key Technical Implementations
+1. **[routes/ai.js](file:///routes/ai.js)**:
+   - Server-side REST handler calling Google Gemini `gemini-1.5-flash:generateContent`.
+   - **Rate Limiting**: Integrated 5-second cooldown per client to prevent quota starvation and denial-of-service.
+   - **Graceful Degradation**: On missing API key, network timeout (8-second abort signal), or upstream HTTP error, the handler catches exceptions and returns a meaningful offline fallback payload (`fallback: true`) with HTTP 200 so the core app never crashes.
+2. **[frontend/src/components/Projects.jsx](file:///frontend/src/components/Projects.jsx)**:
+   - Added **"✨ Auto-Generate with AI"** button with dynamic loading state (`Gemini Thinking...`).
+   - Keeps user in control: AI responses are pre-filled as editable text that the user can freely accept, refine, or delete before submitting.
+   - Distinct visual disclaimer pills differentiating live Gemini generations from offline fallbacks.
+3. **[tests/api.test.js](file:///tests/api.test.js)**:
+   - Automated tests verifying input validation (HTTP 400 on missing title) and offline graceful degradation fallback generation.
+
+### Key Viva Questions & Analysis
+
+1. **Why must the AI API key be called from the backend rather than directly from the React frontend?**
+   - Frontend code runs entirely in the user's browser, meaning all variables, network payloads, and bundles are publicly accessible via browser Developer Tools (Network and Source tabs). Exposing a private API key in the client allows malicious actors to steal credentials, exhaust account quotas, and incur financial liabilities. Calling the AI provider exclusively from an Express backend ensures the API key remains strictly encapsulated in `process.env`.
+
+2. **What does 'graceful degradation' mean in this context, and why does it matter for a feature that depends on a third-party service?**
+   - Graceful degradation is a software design pattern where a system continues to operate in a reduced or fallback capacity when an external component fails, rather than crashing or terminating the user session. Since external AI APIs are subject to network timeouts, rate limits, and outages outside our control, wrapping the AI call in `try/catch` and returning an offline deterministic fallback guarantees that task creation remains 100% operational.
+
+3. **What are the privacy, governance, and Responsible AI implications of sending task data to an external AI API?**
+   - **Data Privacy & PII:** Task titles and descriptions may inadvertently contain sensitive personal identifiable information (PII), credentials, or proprietary business logic. Sending raw user data to public AI providers may expose confidential information unless data-sharing opt-outs and encryption agreements are in place.
+   - **Human-in-the-Loop:** AI suggestions should always be presented as editable drafts rather than automated final decisions, preserving human autonomy and accountability.
+   - **Hallucinations & Disclaimers:** Applications must clearly label AI-generated content with disclaimers so users remain aware that suggestions require human review.
