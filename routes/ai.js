@@ -69,8 +69,8 @@ Respond ONLY with valid JSON in this exact structure:
   "suggestedPriority": "low" | "medium" | "high"
 }`;
 
-    // Try gemini-1.5-flash, fallback to gemini-2.0-flash if needed
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    // Try gemini-flash-latest with fallback
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000); // 8-second timeout
@@ -138,3 +138,4 @@ Respond ONLY with valid JSON in this exact structure:
 });
 
 module.exports = router;
+
