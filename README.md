@@ -1,5 +1,7 @@
 # Task Management RESTful API with Express & Mongoose / MongoDB
 
+[![CI Pipeline](https://github.com/parthmavani/task-manager-api-24IT050/actions/workflows/ci.yml/badge.svg)](https://github.com/parthmavani/task-manager-api-24IT050/actions/workflows/ci.yml)
+
 ## Overview
 This repository contains a complete Express.js RESTful API implementation for a **Task Management System** connected to **MongoDB** using **Mongoose ODM**. It demonstrates Express middleware pipelines, Mongoose schema validation (required fields, default values, pre-save hooks, enums), centralized error handling, and environment variable configuration using `dotenv`.
 
@@ -364,3 +366,52 @@ docker compose down
 
 
 
+
+
+---
+
+## Practical 12: CI/CD Pipeline with GitHub Actions
+
+### Overview & Objective
+- **CO/PO**: CO5 / PO3, PO5
+- **Objective**: Automate building, dependency installation, and automated test execution on every commit and pull request pushed to GitHub using a GitHub Actions CI pipeline.
+- **Core Principle**: Shift-left defect detection by continuously integrating changes into a shared mainline with automated verification to catch breaking changes, regression issues, and contract violations early in the development lifecycle.
+
+### Pipeline Architecture
+
+```
+Developer Workspace
+        │
+        ▼ (git push origin main)
+GitHub Repository (parthmavani/task-manager-api-24IT050)
+        │
+        ▼ (Trigger on: push / pull_request [main])
+GitHub Actions Virtual Environment (ubuntu-latest)
+        │
+        ├── 1. Checkout repository (actions/checkout@v4)
+        ├── 2. Setup Node.js 18 with npm cache (actions/setup-node@v4)
+        ├── 3. Install dependencies (npm install)
+        └── 4. Run automated test suite (npm test via Jest & Supertest)
+        │
+        ▼
+Pass: Green Checkmark (✅) / Fail: Red Cross (❌) + Realtime Build Logs
+```
+
+### Files Implemented in Practical 12
+1. **[.github/workflows/ci.yml](file:///.github/workflows/ci.yml)**: Declarative YAML workflow configuring trigger events (`push`, `pull_request` on `main`), runner OS (`ubuntu-latest`), and sequential pipeline steps.
+2. **[tests/api.test.js](file:///tests/api.test.js)**: Automated regression and integration tests using `jest` and `supertest` validating API root health, custom 404 handler middleware, and request content-type enforcement.
+3. **[package.json](file:///package.json)**: Configured `"test": "jest"` and scoped Jest `testMatch` to `tests/**/*.test.js`.
+
+### Key Viva Questions & Analysis
+
+1. **What is the difference between Continuous Integration (CI) and Continuous Deployment (CD), and which one does this practical demonstrate?**
+   - **Continuous Integration (CI):** The practice of automating the integration of code changes from multiple contributors into a single software project. It automatically triggers builds, executes unit and integration test suites, and runs static analysis (linters) on every commit to ensure new code does not break existing features. This practical specifically demonstrates **Continuous Integration**.
+   - **Continuous Deployment (CD):** The automated stage directly following CI where validated code changes are automatically packaged (e.g. Docker images) and deployed to staging or production environments (e.g. AWS, Render, Railway, Kubernetes) without manual intervention.
+
+2. **Why does running tests automatically on every push catch problems earlier than testing manually before a release?**
+   - Manual testing before releases is infrequent, slow, and error-prone. When multiple developers merge weeks of changes, identifying the root cause of a bug becomes complex and expensive. Continuous Integration enforces immediate feedback ("fail fast"): if a commit introduces a defect, the author is notified within minutes with exact line numbers and logs, reducing time-to-resolution and eliminating merge surprises.
+
+3. **What would happen to the pipeline if the test file path were incorrect — would the workflow fail at the same step as a genuine test failure?**
+   - Both scenarios result in a failed pipeline step (`npm test`), but the failure mechanism and error diagnostics differ:
+     - **Incorrect test path / missing test file:** Jest reports `No tests found` or `Your test suite must contain at least one test` with exit code 1. The test runner cannot find executable assertions.
+     - **Genuine test failure:** Jest successfully locates and executes the test file, but an assertion fails (e.g. `Received: 500, Expected: 200`), displaying expected vs received diffs and stack traces. Both halt the pipeline, but the log output distinguishes harness configuration errors from software defects.
